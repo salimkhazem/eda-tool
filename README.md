@@ -23,36 +23,6 @@ This tool performs automated Exploratory Data Analysis (EDA) using OpenAI's GPT-
    ```
 3. Configure your API details in the `.env` file using the `.env.example` template
 
-### Setting Up PDF Support
-
-To generate PDF reports, you'll need additional dependencies:
-
-```bash
-# Run the helper script to install PDF libraries
-python install_pdf_dependencies.py
-```
-
-Alternatively, install them manually:
-
-1. **WeasyPrint** (recommended):
-   ```bash
-   pip install weasyprint
-   ```
-
-2. **PDFKit** (alternative, requires wkhtmltopdf):
-   ```bash
-   pip install pdfkit
-   ```
-   You'll also need to install wkhtmltopdf:
-   - macOS: `brew install wkhtmltopdf`
-   - Debian/Ubuntu: `sudo apt-get install wkhtmltopdf`
-   - Windows: Download installer from [wkhtmltopdf.org](https://wkhtmltopdf.org/downloads.html)
-
-3. **markdown2pdf** (fallback):
-   ```bash
-   pip install markdown2pdf
-   ```
-
 ## Usage
 
 ### Command Line Interface
