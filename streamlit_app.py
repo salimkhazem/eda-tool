@@ -9,6 +9,12 @@ import glob
 import PIL
 from PIL import Image
 import io
+import shutil
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Increase PIL's maximum image size limit
 # This should be done carefully as very large images can consume a lot of memory
@@ -22,6 +28,32 @@ st.set_page_config(
     page_icon="📊",
     layout="wide"  # Ensure wide layout is used
 )
+
+def clear_output_directory():
+    """Clear the output directory to ensure fresh results for each dataset"""
+    config = Config()
+    output_dir = Path(config.output_dir)
+    
+    if output_dir.exists():
+        # Clear figures directory
+        figures_dir = output_dir / "figures"
+        if figures_dir.exists():
+            try:
+                for file in figures_dir.glob("*"):
+                    if file.is_file():
+                        file.unlink()
+                logger.info(f"Cleared figures directory: {figures_dir}")
+            except Exception as e:
+                logger.error(f"Error clearing figures directory: {str(e)}")
+        
+        # Clear main output files (markdown, html, etc.)
+        for ext in ["md", "html", "json", "xlsx", "zip"]:
+            for file in output_dir.glob(f"*.{ext}"):
+                try:
+                    file.unlink()
+                    logger.info(f"Removed file: {file}")
+                except Exception as e:
+                    logger.error(f"Error removing file {file}: {str(e)}")
 
 def main():
     # Create a layout with logo and title side by side
@@ -53,6 +85,10 @@ def main():
     - Generate an interactive report
     """)
     
+    # Add a session state to track when a new file is uploaded or dataset is selected
+    if 'current_dataset' not in st.session_state:
+        st.session_state.current_dataset = None
+    
     # File upload
     uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx", "xls"])
     
@@ -60,6 +96,11 @@ def main():
     st.sidebar.header("Configuration")
     output_format = st.sidebar.selectbox("Primary Report Format", ["markdown", "html"], index=1)
     eda_depth = st.sidebar.selectbox("Analysis Depth", ["basic", "intermediate", "deep"], index=1)
+    
+    # Add a "Clear Previous Results" button
+    if st.sidebar.button("Clear Previous Results"):
+        clear_output_directory()
+        st.sidebar.success("Previous results cleared!")
     
     # Advanced options
     with st.sidebar.expander("Advanced Options"):
@@ -76,6 +117,17 @@ def main():
             "Select an example dataset",
             ["None", "Iris Dataset", "Titanic Dataset", "Housing Dataset"]
         )
+    
+    # Check if dataset selection has changed
+    dataset_changed = False
+    current_dataset = f"example_{example_option}" if example_option != "None" else (uploaded_file.name if uploaded_file else None)
+    
+    if current_dataset != st.session_state.current_dataset:
+        dataset_changed = True
+        st.session_state.current_dataset = current_dataset
+        # Clear previous output if dataset has changed
+        if dataset_changed:
+            clear_output_directory()
     
     if example_option != "None":
         # Load example dataset
@@ -122,7 +174,6 @@ def main():
                     try:
                         # Run EDA
                         output_dir = custom_output_dir if custom_output_dir else None
-                        # Use generate_all_formats instead of generate_both
                         reports = run_eda(temp_path, output_format, output_dir, export_formats=None)
                         _display_results(reports.get('html', reports.get('markdown')), output_format, reports)
                     finally:
@@ -167,7 +218,6 @@ def main():
                         progress_bar.progress(30)
                         
                         output_dir = custom_output_dir if custom_output_dir else None
-                        # Use generate_all_formats instead of generate_both
                         reports = run_eda(temp_path, output_format, output_dir, export_formats=None)
                         
                         status_text.text("Creating visualizations...")
@@ -334,9 +384,9 @@ def _display_results(report_path, output_format, all_reports=None):
             image_files = list(figures_dir.glob("*.png"))
             if image_files:
                 # Create a gallery of download links, 3 per row
-                for i in range(0, len(image_files), 3):
-                    cols = st.columns(3)
-                    for j in range(3):
+                for i in range(0, len(image_files), 6):
+                    cols = st.columns(6)
+                    for j in range(6):
                         if i + j < len(image_files):
                             try:
                                 img_path = image_files[i + j]

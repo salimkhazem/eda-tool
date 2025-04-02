@@ -28,8 +28,9 @@ COPY .env* ./
 # Copy the entire application
 COPY . .
 
-# Create directory for output files
-RUN mkdir -p eda_output/figures
+# Create directory for output files and ensure correct permissions
+RUN mkdir -p eda_output/figures eda_output/interactive \
+    && chmod -R 777 eda_output
 
 # Make the entry script executable
 RUN chmod +x docker-entrypoint.sh

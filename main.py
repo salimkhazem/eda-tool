@@ -6,6 +6,7 @@ import json
 import time
 import traceback
 import os
+import shutil
 
 from config import Config
 from data_loader import DataLoader
@@ -14,6 +15,49 @@ from eda_executor import EDAExecutor
 from report_generator import ReportGenerator
 from export_service import ExportService
 from utils import export_results
+
+def clean_output_directory(output_dir):
+    """
+    Clean the output directory to ensure fresh results
+    
+    Args:
+        output_dir: Path to the output directory
+    """
+    output_path = Path(output_dir)
+    
+    # Clear figures directory
+    figures_dir = output_path / "figures"
+    if figures_dir.exists():
+        # Remove all files in figures directory
+        for file in figures_dir.glob("*"):
+            if file.is_file():
+                try:
+                    file.unlink()
+                except Exception as e:
+                    print(f"Error removing file {file}: {str(e)}")
+    else:
+        # Create the figures directory if it doesn't exist
+        figures_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Clear interactive directory if it exists
+    interactive_dir = output_path / "interactive"
+    if interactive_dir.exists():
+        for file in interactive_dir.glob("*"):
+            if file.is_file():
+                try:
+                    file.unlink()
+                except Exception as e:
+                    print(f"Error removing file {file}: {str(e)}")
+    else:
+        interactive_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Remove main output files
+    for ext in ["md", "html", "json", "xlsx", "zip"]:
+        for file in output_path.glob(f"*.{ext}"):
+            try:
+                file.unlink()
+            except Exception as e:
+                print(f"Error removing file {file}: {str(e)}")
 
 def run_eda(data_source, output_format='markdown', output_dir=None, export_formats=None):
     """
@@ -34,6 +78,9 @@ def run_eda(data_source, output_format='markdown', output_dir=None, export_forma
     config = Config()
     if output_dir:
         config.output_dir = output_dir
+    
+    # Clean the output directory to ensure fresh results
+    clean_output_directory(config.output_dir)
     
     # Initialize components
     data_loader = DataLoader(config)

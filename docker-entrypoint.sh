@@ -41,6 +41,15 @@ if [ ! -f /app/app.py ]; then
     exit 1
 fi
 
+# Create clean output directory
+echo "Preparing output directory..."
+mkdir -p /app/eda_output/figures
+mkdir -p /app/eda_output/interactive
+# Clear any existing files in the directories if they exist
+rm -f /app/eda_output/*.md /app/eda_output/*.html /app/eda_output/*.json /app/eda_output/*.xlsx /app/eda_output/*.zip
+rm -f /app/eda_output/figures/*
+rm -f /app/eda_output/interactive/*
+
 # Print directory structure for debugging
 echo "Directory structure:"
 find /app -type f -name "*.py" | sort
