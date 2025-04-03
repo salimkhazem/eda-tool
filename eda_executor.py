@@ -78,6 +78,108 @@ class EDAExecutor:
         # Store insights
         self.results["insights"] = eda_plan.get("insights", [])
         
+        # Create enhanced correlation visualizations
+        try:
+            from correlation_viz import (
+                create_enhanced_correlation_heatmap,
+                create_clustered_correlation_heatmap,
+                create_absolute_correlation_heatmap,
+                create_filtered_correlation_heatmap
+            )
+            
+            # Generate the Pearson correlation heatmap directly in the figures directory
+            heatmap_path = self.figures_dir / "correlation_heatmap.png"
+            corr_path = create_enhanced_correlation_heatmap(df, output_path=heatmap_path, method='pearson')
+            
+            # Add standard Pearson correlation visualization to results
+            if corr_path:
+                self.results["visualizations"].append({
+                    "title": "Pearson Correlation Heatmap",
+                    "type": "correlation",
+                    "columns": df.select_dtypes(include=['number']).columns.tolist(),
+                    "description": "Heatmap showing Pearson correlations between numeric variables",
+                    "file_path": str(corr_path)
+                })
+            
+            # Generate the Spearman correlation heatmap directly in the figures directory
+            spearman_path = self.figures_dir / "spearman_correlation_heatmap.png"
+            spearman_corr_path = create_enhanced_correlation_heatmap(df, output_path=spearman_path, method='spearman')
+            
+            # Add Spearman correlation visualization to results
+            if spearman_corr_path:
+                self.results["visualizations"].append({
+                    "title": "Spearman Correlation Heatmap",
+                    "type": "correlation",
+                    "columns": df.select_dtypes(include=['number']).columns.tolist(),
+                    "description": "Heatmap showing Spearman rank correlations between numeric variables",
+                    "file_path": str(spearman_corr_path)
+                })
+            
+            # Add clustered correlation heatmap
+            clustered_path = self.figures_dir / "clustered_correlation_heatmap.png"
+            clustered_corr_path = create_clustered_correlation_heatmap(df, output_path=clustered_path, method='pearson')
+            if clustered_corr_path:
+                self.results["visualizations"].append({
+                    "title": "Clustered Correlation Heatmap",
+                    "type": "correlation",
+                    "columns": df.select_dtypes(include=['number']).columns.tolist(),
+                    "description": "Hierarchically clustered heatmap showing Pearson correlations between numeric variables",
+                    "file_path": str(clustered_corr_path)
+                })
+            
+            # Add clustered Spearman correlation heatmap
+            clustered_spearman_path = self.figures_dir / "clustered_spearman_correlation_heatmap.png"
+            clustered_spearman_corr_path = create_clustered_correlation_heatmap(df, output_path=clustered_spearman_path, method='spearman')
+            if clustered_spearman_corr_path:
+                self.results["visualizations"].append({
+                    "title": "Clustered Spearman Correlation Heatmap", 
+                    "type": "correlation",
+                    "columns": df.select_dtypes(include=['number']).columns.tolist(),
+                    "description": "Hierarchically clustered heatmap showing Spearman rank correlations between numeric variables",
+                    "file_path": str(clustered_spearman_corr_path)
+                })
+            
+            # Add absolute correlation heatmap
+            absolute_path = self.figures_dir / "absolute_correlation_heatmap.png"
+            abs_corr_path = create_absolute_correlation_heatmap(df, output_path=absolute_path)
+            if abs_corr_path:
+                self.results["visualizations"].append({
+                    "title": "Absolute Correlation Heatmap",
+                    "type": "correlation",
+                    "columns": df.select_dtypes(include=['number']).columns.tolist(),
+                    "description": "Heatmap showing absolute correlation values between numeric variables",
+                    "file_path": str(abs_corr_path)
+                })
+            
+            # Add filtered Pearson correlation heatmap
+            filtered_path = self.figures_dir / "filtered_correlation_heatmap.png"
+            filtered_corr_path = create_filtered_correlation_heatmap(df, output_path=filtered_path)
+            if filtered_corr_path:
+                self.results["visualizations"].append({
+                    "title": "Strong Pearson Correlations Heatmap",
+                    "type": "correlation",
+                    "columns": df.select_dtypes(include=['number']).columns.tolist(),
+                    "description": "Heatmap showing only strong Pearson correlations (|r| > 0.5) between numeric variables",
+                    "file_path": str(filtered_corr_path)
+                })
+                
+            # Add filtered Spearman correlation heatmap
+            filtered_spearman_path = self.figures_dir / "filtered_spearman_correlation_heatmap.png"
+            filtered_spearman_corr_path = create_filtered_correlation_heatmap(df, output_path=filtered_spearman_path, method='spearman')
+            if filtered_spearman_corr_path:
+                self.results["visualizations"].append({
+                    "title": "Strong Spearman Correlations Heatmap",
+                    "type": "correlation",
+                    "columns": df.select_dtypes(include=['number']).columns.tolist(),
+                    "description": "Heatmap showing only strong Spearman rank correlations (|r| > 0.5) between numeric variables",
+                    "file_path": str(filtered_spearman_corr_path)
+                })
+                
+        except ImportError:
+            print("   ⚠️ correlation_viz module not available, skipping enhanced correlation visualizations")
+        except Exception as e:
+            print(f"   ⚠️ Error creating correlation visualizations: {e}")
+        
         # Perform deep analysis if requested and if depth is set to deep
         if perform_deep_analysis or self.config.eda_depth == 'deep':
             try:
