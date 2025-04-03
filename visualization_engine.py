@@ -620,6 +620,28 @@ class VisualizationEngine:
                         "interactive": False
                     }
         
+        elif plot_type == "stacked_bar":
+            if len(columns) == 2:
+                # Create a stacked bar chart
+                cross_tab = pd.crosstab(df[columns[0]], df[columns[1]], normalize='index')
+                cross_tab.plot(kind='bar', stacked=True, colormap='viridis')
+                plt.xlabel(columns[0])
+                plt.ylabel('Proportion')
+                plt.legend(title=columns[1], bbox_to_anchor=(1.05, 1), loc='upper left')
+                plt.xticks(rotation=45, ha='right')
+                plot_created = True
+        
+        elif plot_type == "ecdf":
+            if len(columns) == 1 and pd.api.types.is_numeric_dtype(df[columns[0]]):
+                # Create an empirical cumulative distribution function
+                x = np.sort(df[columns[0]].dropna())
+                y = np.arange(1, len(x) + 1) / len(x)
+                plt.step(x, y, where='post')
+                plt.xlabel(columns[0])
+                plt.ylabel('Cumulative Probability')
+                plt.grid(True, linestyle='--', alpha=0.7)
+                plot_created = True
+        
         # Finalize the plot with better styling
         if plot_created:
             plt.title(title, fontweight='bold')
@@ -637,7 +659,7 @@ class VisualizationEngine:
                 "columns": columns,
                 "interactive": False
             }
-        
+    
     def _create_interactive_plot(self, df, viz_config, file_id):
         """Create an interactive plotly plot"""
         plot_type = viz_config.get("type", "").lower()
@@ -651,6 +673,8 @@ class VisualizationEngine:
         custom_colorscale = px.colors.sequential.Plasma
         custom_diverging = px.colors.diverging.RdBu_r
         custom_qualitative = px.colors.qualitative.G10
+        
+        fig = None
         
         # Univariate plots
         if plot_type == "histogram":
@@ -667,7 +691,7 @@ class VisualizationEngine:
                 for col in numeric_cols:
                     fig.add_trace(go.Histogram(x=df[col].dropna(), histnorm='density', name=col, opacity=0.6))
                 fig.update_layout(barmode='overlay', title=title)
-        
+                
         elif plot_type == "boxplot" or plot_type == "box":
             if len(columns) == 1 and pd.api.types.is_numeric_dtype(df[columns[0]]):
                 fig = px.box(df, y=columns[0], title=title)
@@ -685,7 +709,7 @@ class VisualizationEngine:
                     fig = px.violin(df, x=columns[1], y=columns[0], box=True, points="all", title=title)
                 elif pd.api.types.is_numeric_dtype(df[columns[1]]) and not pd.api.types.is_numeric_dtype(df[columns[0]]):
                     fig = px.violin(df, x=columns[0], y=columns[1], box=True, points="all", title=title)
-        
+                
         elif plot_type == "bar":
             if len(columns) == 1:
                 value_counts = df[columns[0]].value_counts().sort_values(ascending=False).head(10)
@@ -753,12 +777,10 @@ class VisualizationEngine:
         elif plot_type == "bubble":
             if len(columns) >= 3 and all(pd.api.types.is_numeric_dtype(df[col]) for col in columns[:3]):
                 x_col, y_col, size_col = columns[:3]
-                
                 # Get color column if available
                 color_col = None
                 if len(columns) > 3:
                     color_col = columns[3]
-                
                 fig = px.scatter(df, x=x_col, y=y_col, size=size_col, 
                                 color=color_col if color_col else None,
                                 hover_name=df.index if df.index.name else None,
@@ -773,7 +795,6 @@ class VisualizationEngine:
             if numeric_cols and len(numeric_cols) >= 3:
                 # Use up to 8 numeric dimensions for readability
                 plot_cols = numeric_cols[:8]
-                
                 # Add categorical column for color if available
                 color_col = None
                 if cat_cols:
@@ -786,7 +807,6 @@ class VisualizationEngine:
                         plot_df = df.copy()
                 else:
                     plot_df = df.copy()
-                
                 fig = px.parallel_coordinates(
                     plot_df, 
                     dimensions=plot_cols,
@@ -794,63 +814,95 @@ class VisualizationEngine:
                     title=title,
                     color_continuous_scale=px.colors.diverging.Tealrose if color_col and pd.api.types.is_numeric_dtype(df[color_col]) else None
                 )
-                
                 fig.update_layout(coloraxis_colorbar=dict(title=color_col if color_col else ""))
         
-        elif plot_type == "violin":
-            if len(columns) >= 2:
-                # Find categorical and numeric columns
-                cat_cols = [c for c in columns if not pd.api.types.is_numeric_dtype(df[c])]
-                num_cols = [c for c in columns if pd.api.types.is_numeric_dtype(df[c])]
+        elif plot_type == "parallel_categories":
+            # Create interactive parallel categories plot
+            cat_cols = [c for c in columns if not pd.api.types.is_numeric_dtype(df[c])]
+            if len(cat_cols) >= 2:
+                # Limit to reasonable categories per column
+                plot_df = df.copy()
+                for col in cat_cols:
+                    if df[col].nunique() > 10:
+                        # Get top 10 categories by frequency
+                        top_cats = df[col].value_counts().nlargest(9).index.tolist()
+                        # Replace other categories with "Other"
+                        plot_df.loc[~plot_df[col].isin(top_cats), col] = "Other"
                 
-                if cat_cols and num_cols:
-                    # Limit categories if needed
-                    if df[cat_cols[0]].nunique() > 10:
-                        top_cats = df[cat_cols[0]].value_counts().head(10).index
-                        plot_df = df[df[cat_cols[0]].isin(top_cats)]
-                    else:
-                        plot_df = df
+                # Create parallel categories diagram
+                fig = px.parallel_categories(
+                    plot_df,
+                    dimensions=cat_cols,
+                    title=title,
+                    color_continuous_scale=px.colors.sequential.Viridis
+                )
+                fig.update_layout(margin={"r": 80, "t": 60, "l": 80, "b": 30})
+        
+        elif plot_type == "scatter3d":
+            if len(columns) >= 3:
+                # Create 3D scatter plot
+                numeric_cols = [c for c in columns if pd.api.types.is_numeric_dtype(df[c])]
+                if len(numeric_cols) >= 3:
+                    # Use the first 3 numeric columns for x, y, z
+                    x_col, y_col, z_col = numeric_cols[:3]
                     
-                    # Create violin plot with box inside
-                    fig = px.violin(
-                        plot_df, 
-                        x=cat_cols[0], 
-                        y=num_cols[0],
-                        color=cat_cols[1] if len(cat_cols) > 1 else None,
-                        box=True, 
-                        points="all",
-                        title=title
+                    # Check if we have a categorical column for color
+                    color_col = None
+                    if len(columns) > 3 and not pd.api.types.is_numeric_dtype(df[columns[3]]):
+                        color_col = columns[3]
+                    
+                    # Create the 3D scatter plot
+                    if color_col:
+                        fig = px.scatter_3d(
+                            df, 
+                            x=x_col, 
+                            y=y_col, 
+                            z=z_col,
+                            color=color_col,
+                            opacity=0.7,
+                            title=title
+                        )
+                    else:
+                        fig = px.scatter_3d(
+                            df, 
+                            x=x_col, 
+                            y=y_col, 
+                            z=z_col,
+                            opacity=0.7,
+                            title=title
+                        )
+                    
+                    # Update layout for better appearance
+                    fig.update_layout(
+                        scene=dict(
+                            xaxis_title=x_col,
+                            yaxis_title=y_col,
+                            zaxis_title=z_col
+                        ),
+                        margin=dict(l=0, r=0, b=0, t=40)
                     )
         
-        elif plot_type == "treemap" or plot_type == "sunburst":
-            # These plots work best with hierarchical categorical data
+        # Add support for interactive sunburst chart
+        elif plot_type == "sunburst":
             cat_cols = [c for c in columns if not pd.api.types.is_numeric_dtype(df[c])]
-            num_cols = [c for c in columns if pd.api.types.is_numeric_dtype(df[c])]
-            
-            if len(cat_cols) >= 1:
-                # Use categorical columns as path and numeric column as value if available
-                path = cat_cols[:3]  # Limit to 3 levels for readability
-                values = num_cols[0] if num_cols else None
+            if cat_cols:
+                # Get value column if available
+                value_col = None
+                if len(columns) > len(cat_cols):
+                    for col in columns:
+                        if col not in cat_cols and pd.api.types.is_numeric_dtype(df[col]):
+                            value_col = col
+                            break
                 
-                # Sample if dataset is very large (for better performance)
-                plot_df = df.sample(min(5000, len(df))) if len(df) > 5000 else df
-                
-                if plot_type == "treemap":
-                    fig = px.treemap(
-                        plot_df,
-                        path=path,
-                        values=values,
-                        color=path[-1],
-                        title=title
-                    )
-                else:  # sunburst
-                    fig = px.sunburst(
-                        plot_df,
-                        path=path,
-                        values=values,
-                        color=path[-1],
-                        title=title
-                    )
+                # Create sunburst chart
+                fig = px.sunburst(
+                    df,
+                    path=cat_cols[:3],  # Use up to 3 categorical columns for the hierarchy
+                    values=value_col,
+                    title=title
+                )
+                fig.update_layout(margin=dict(l=0, r=0, b=0, t=40))
+                fig.update_traces(textinfo="label+percent parent")
         
         # Save the interactive plot
         if fig:
@@ -902,7 +954,7 @@ class VisualizationEngine:
                 </div>
         """
         
-        # Add univariate tab content
+        # Add univariate tab content    
         html_content += '<div id="univariate" class="tab-content active">'
         
         univariate_types = ["histogram", "density", "kde", "boxplot", "box", "violin", "bar", "countplot", "pie"]
@@ -943,12 +995,10 @@ class VisualizationEngine:
                         tabcontent[i].style.display = "none";
                         tabcontent[i].className = tabcontent[i].className.replace(" active", "");
                     }
-                    
                     tablinks = document.getElementsByClassName("tab");
                     for (i = 0; i < tablinks.length; i++) {
                         tablinks[i].className = tablinks[i].className.replace(" active", "");
                     }
-                    
                     document.getElementById(tabName).style.display = "block";
                     document.getElementById(tabName).className += " active";
                     evt.currentTarget.className += " active";
@@ -971,8 +1021,7 @@ class VisualizationEngine:
         <div class="plot-container">
             <div class="plot-title">{viz['title']}</div>
             <div class="plot-description">{viz['description']}</div>
-            <div class="plot-image">
-        """
+            <div class="plot-image">"""
         
         if viz['interactive'] and Path(viz['file_path']).exists():
             # For interactive plots, embed an iframe
@@ -1002,15 +1051,189 @@ class VisualizationEngine:
         Returns:
             list: List of visualization metadata
         """
+        # First, handle any explicitly specified visualizations from the EDA plan
         for i, viz_config in enumerate(eda_plan.get("visualizations", [])):
-            # Add interactive flag for complex plots
+            # Add interactive flag for complex plots that benefit from interactivity
             if viz_config["type"].lower() in ["scattermatrix", "heatmap", "correlation", "3d", 
-                                             "parallel_coordinates", "treemap", "sunburst"]:
+                                         "parallel_coordinates", "treemap", "sunburst",
+                                         "scatter3d"]:
                 viz_config["interactive"] = True
             
             self.create_visualization(df, viz_config)
+        
+        # If we have less than 20 visualizations so far, generate additional ones automatically
+        if len(self.visualization_results) < 20:
+            self._create_automatic_visualizations(df)
         
         # Create a dashboard with all visualizations
         dashboard_path = self.get_visualization_dashboard()
         
         return self.visualization_results
+
+    def _create_automatic_visualizations(self, df):
+        """
+        Create additional visualizations automatically based on data characteristics
+        
+        Args:
+            df: Pandas DataFrame
+        """
+        # Get column types
+        numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
+        categorical_columns = df.select_dtypes(exclude=['number', 'datetime']).columns.tolist()
+        datetime_columns = df.select_dtypes(include=['datetime']).columns.tolist()
+        
+        # Determine correlations between numeric columns
+        if len(numeric_columns) >= 2:
+            # Find pairs with strong correlations
+            try:
+                corr_matrix = df[numeric_columns].corr()
+                strong_correlations = []
+                for i in range(len(numeric_columns)):
+                    for j in range(i+1, len(numeric_columns)):
+                        if abs(corr_matrix.iloc[i, j]) > 0.5:  # Strong correlation threshold
+                            strong_correlations.append((numeric_columns[i], numeric_columns[j], abs(corr_matrix.iloc[i, j])))
+                
+                # Sort by correlation strength (descending)
+                strong_correlations.sort(key=lambda x: x[2], reverse=True)
+                
+                # Create scatter plots for top correlated pairs
+                for col1, col2, corr_val in strong_correlations[:5]:  # Top 5 correlations
+                    viz_config = {
+                        "title": f"Correlation: {col1} vs {col2} (r={corr_val:.2f})",
+                        "type": "regplot",  # Use regression plot to show trend line
+                        "columns": [col1, col2],
+                        "description": f"Strong {'positive' if corr_val > 0 else 'negative'} correlation (r={corr_val:.2f})"
+                    }
+                    self.create_visualization(df, viz_config)
+            except Exception as e:
+                print(f"Error creating correlation visualizations: {e}")
+        
+        # For categorical columns, find those with interesting distributions
+        if categorical_columns:
+            for col in categorical_columns[:5]:  # Limit to first 5 columns
+                value_counts = df[col].value_counts()
+                if 2 <= len(value_counts) <= 10:  # Good number of categories
+                    # Create a bar plot
+                    viz_config = {
+                        "title": f"Distribution of {col}",
+                        "type": "bar",
+                        "columns": [col],
+                        "description": f"Category distribution for {col}"
+                    }
+                    self.create_visualization(df, viz_config)
+                    
+                    # Create relationships with numeric columns
+                    for num_col in numeric_columns[:3]:  # First 3 numeric columns
+                        viz_config = {
+                            "title": f"{num_col} by {col}",
+                            "type": "violinplot",
+                            "columns": [col, num_col],
+                            "description": f"Distribution of {num_col} across {col} categories"
+                        }
+                        self.create_visualization(df, viz_config)
+        
+        # Generate time series visualizations if datetime columns exist
+        if datetime_columns and numeric_columns:
+            for dt_col in datetime_columns[:1]:  # Use first datetime column
+                # First resample to reduce noise if there are many data points
+                if len(df) > 100:
+                    try:
+                        # Set datetime index
+                        temp_df = df.set_index(dt_col)
+                        # Try to determine appropriate frequency
+                        date_range = (temp_df.index.max() - temp_df.index.min()).days
+                        if date_range > 365*2:  # More than 2 years
+                            freq = 'M'  # Monthly
+                        elif date_range > 90:  # More than 3 months
+                            freq = 'W'  # Weekly
+                        elif date_range > 10:  # More than 10 days
+                            freq = 'D'  # Daily
+                        else:
+                            freq = 'H'  # Hourly
+                        
+                        # Create time series for top numeric columns
+                        for num_col in numeric_columns[:5]:
+                            if temp_df[num_col].nunique() > 5:  # Only for columns with sufficient variation
+                                try:
+                                    resampled = temp_df[num_col].resample(freq).mean()
+                                    # Skip if resampling results in too few data points
+                                    if len(resampled) >= 5:
+                                        # Create interactive time series
+                                        viz_config = {
+                                            "title": f"Time Series: {num_col} over time",
+                                            "type": "line",
+                                            "columns": [dt_col, num_col],
+                                            "description": f"Time series showing {num_col} trend over time",
+                                            "interactive": True
+                                        }
+                                        self.create_visualization(df, viz_config)
+                                except Exception:
+                                    # If resampling fails, use original data
+                                    viz_config = {
+                                        "title": f"Time Series: {num_col} over time",
+                                        "type": "line",
+                                        "columns": [dt_col, num_col],
+                                        "description": f"Time series showing {num_col} trend over time",
+                                        "interactive": True
+                                    }
+                                    self.create_visualization(df, viz_config)
+                    except Exception as e:
+                        print(f"Error creating time series: {e}")
+        
+        # Create interactive 3D scatter plot for datasets with many numeric columns
+        if len(numeric_columns) >= 3:
+            if categorical_columns:
+                # With categorical coloring
+                viz_config = {
+                    "title": "3D Scatter Plot with Categorical Coloring",
+                    "type": "scatter3d",
+                    "columns": numeric_columns[:3] + [categorical_columns[0]],
+                    "description": "Interactive 3D scatter plot showing relationships between three numeric variables with categorical coloring",
+                    "interactive": True
+                }
+                self.create_visualization(df, viz_config)
+            else:
+                # Without categorical coloring
+                viz_config = {
+                    "title": "3D Scatter Plot",
+                    "type": "scatter3d",
+                    "columns": numeric_columns[:3],
+                    "description": "Interactive 3D scatter plot showing relationships between three numeric variables",
+                    "interactive": True
+                }
+                self.create_visualization(df, viz_config)
+        
+        # Create pattern heatmap for datasets with multiple categorical columns
+        if len(categorical_columns) >= 2:
+            cat1, cat2 = categorical_columns[:2]
+            if df[cat1].nunique() <= 15 and df[cat2].nunique() <= 15:  # Limit to reasonable sized heatmaps
+                viz_config = {
+                    "title": f"Association: {cat1} vs {cat2}",
+                    "type": "heatmap_crosstab",
+                    "columns": [cat1, cat2],
+                    "description": f"Heatmap showing associations between {cat1} and {cat2}",
+                    "interactive": True
+                }
+                self.create_visualization(df, viz_config)
+        
+        # Create distribution plots with density curves for all numeric columns
+        for num_col in numeric_columns[:10]:  # Limit to first 10 numeric columns
+            viz_config = {
+                "title": f"Enhanced Distribution of {num_col}",
+                "type": "displot",
+                "columns": [num_col],
+                "description": f"Distribution plot with density curve for {num_col}"
+            }
+            self.create_visualization(df, viz_config)
+        
+        # Create stacked bar charts for categorical columns
+        if len(categorical_columns) >= 2:
+            cat1, cat2 = categorical_columns[:2]
+            if df[cat1].nunique() <= 10 and df[cat2].nunique() <= 10:  # Limit to reasonable categories
+                viz_config = {
+                    "title": f"Stacked Bar: {cat1} by {cat2}",
+                    "type": "stacked_bar",
+                    "columns": [cat1, cat2],
+                    "description": f"Stacked bar chart showing the relationship between {cat1} and {cat2}"
+                }
+                self.create_visualization(df, viz_config)

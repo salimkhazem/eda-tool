@@ -1,16 +1,13 @@
-import streamlit as st
-import pandas as pd
 import os
-from pathlib import Path
 import tempfile
 import base64
-import time
-import glob
-import PIL
-from PIL import Image
-import io
-import shutil
 import logging
+import io
+import zipfile
+import streamlit as st
+import pandas as pd
+import PIL
+from pathlib import Path
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -18,15 +15,15 @@ logger = logging.getLogger(__name__)
 
 # Increase PIL's maximum image size limit
 # This should be done carefully as very large images can consume a lot of memory
-PIL.Image.MAX_IMAGE_PIXELS = 400000000  # Increase the limit
+PIL.Image.MAX_IMAGE_PIXELS = 4000000000  # Increase the limit
 
 from main import run_eda
-from config import Config
+from config import Config 
 
 st.set_page_config(
-    page_title="Smart EDA with GPT-4o-mini",
+    page_title="Talan Smart EDA",
     page_icon="📊",
-    layout="wide"  # Ensure wide layout is used
+    layout="wide"  # Ensure wide layout is used 
 )
 
 def clear_output_directory():
@@ -45,6 +42,17 @@ def clear_output_directory():
                 logger.info(f"Cleared figures directory: {figures_dir}")
             except Exception as e:
                 logger.error(f"Error clearing figures directory: {str(e)}")
+        
+        # Clear deep analysis directory
+        deep_analysis_dir = output_dir / "deep_analysis"
+        if deep_analysis_dir.exists():
+            try:
+                for file in deep_analysis_dir.glob("*"):
+                    if file.is_file():
+                        file.unlink()
+                logger.info(f"Cleared deep analysis directory: {deep_analysis_dir}")
+            except Exception as e:
+                logger.error(f"Error clearing deep analysis directory: {str(e)}")
         
         # Clear main output files (markdown, html, etc.)
         for ext in ["md", "html", "json", "xlsx", "zip"]:
@@ -162,12 +170,12 @@ def main():
                 
         if show_dataframe:
             st.subheader("Data Preview")
-            st.dataframe(df.head(), use_container_width=True)  # Use full width
+            st.dataframe(df.head(), use_container_width=True)
             
             if st.button("Run EDA on Example Dataset"):
                 with st.spinner("Generating EDA... This may take a minute..."):
-                    # Save to temp file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+                    # Save dataset to temp file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
                         df.to_csv(tmp_file.name, index=False)
                         temp_path = tmp_file.name
                         
@@ -175,9 +183,11 @@ def main():
                         # Run EDA
                         output_dir = custom_output_dir if custom_output_dir else None
                         reports = run_eda(temp_path, output_format, output_dir, export_formats=None)
-                        _display_results(reports.get('html', reports.get('markdown')), output_format, reports)
+                        
+                        # Display results
+                        _display_results(reports["markdown"], output_format, reports)
                     finally:
-                        # Clean up
+                        # Clean up temp file
                         if os.path.exists(temp_path):
                             os.unlink(temp_path)
                 
@@ -195,45 +205,18 @@ def main():
                 df = pd.read_excel(temp_path)
                 
             st.subheader("Data Preview")
-            st.dataframe(df.head(), use_container_width=True)  # Use full width
+            st.dataframe(df.head(), use_container_width=True)
             
             col1, col2 = st.columns([1, 3])
             with col1:
                 # Run EDA button
                 if st.button("Run EDA"):
                     with st.spinner("Generating EDA... This may take a minute..."):
-                        start_time = time.time()
-                        
-                        # Setup progress
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        
-                        # Update progress
-                        status_text.text("Loading data...")
-                        progress_bar.progress(10)
-                        time.sleep(0.5)
-                        
-                        # Run the EDA
-                        status_text.text("Generating EDA plan with gpt-4o-mini...")
-                        progress_bar.progress(30)
-                        
                         output_dir = custom_output_dir if custom_output_dir else None
                         reports = run_eda(temp_path, output_format, output_dir, export_formats=None)
                         
-                        status_text.text("Creating visualizations...")
-                        progress_bar.progress(70)
-                        time.sleep(0.5)
-                        
-                        status_text.text("Generating report...")
-                        progress_bar.progress(90)
-                        time.sleep(0.5)
-                        
-                        # Complete
-                        elapsed_time = time.time() - start_time
-                        status_text.text(f"Completed in {elapsed_time:.2f} seconds")
-                        progress_bar.progress(100)
-                        
-                        _display_results(reports.get('html', reports.get('markdown')), output_format, reports)
+                        # Display results
+                        _display_results(reports["markdown"], output_format, reports)
         
         finally:
             # Clean up the temporary file
@@ -247,6 +230,46 @@ def _display_results(report_path, output_format, all_reports=None):
     # Read the primary report file
     with open(report_path, 'r') as f:
         primary_report_content = f.read()
+    
+    # Apply custom CSS to make tabs take full width of the page
+    st.markdown("""
+    <style>
+    /* Make tabs take the full width of the page */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0px;
+        width: 100%;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        flex-grow: 1;
+        flex-basis: 0;
+        font-size: 1.1em;
+        flex-shrink: 1;
+        justify-content: center;
+        min-width: auto;
+    }
+    
+    /* Make sure the tab content takes full page width too */
+    .stTabs [data-baseweb="tab-panel"] {
+        width: 100%;
+    }
+    
+    /* Container also takes full width */
+    .block-container, .stTabs {
+        width: 100%;
+        max-width: 100%;
+        padding: 0;
+    }
+    
+    /* Ensure content is wide too */
+    div[data-testid="stVerticalBlock"] {
+        width: 100%;
+        max-width: 100%;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     # Create tabs for different views with full width
     tab1, tab2, tab3, tab4 = st.tabs(["HTML Report", "Markdown Report", "Visualizations", "Download"])
@@ -291,70 +314,129 @@ def _display_results(report_path, output_format, all_reports=None):
     with tab2:
         # Display the markdown report - already using full width
         if 'markdown' in all_reports:
+            # First, collect all image files to display them directly
+            output_dir = Path(report_path).parent
+            figures_dir = output_dir / "figures"
+            deep_analysis_dir = output_dir / "deep_analysis"
+            
+            # Get all image files
+            image_files = []
+            if figures_dir.exists():
+                image_files.extend(list(figures_dir.glob("*.png")))
+            if deep_analysis_dir.exists():
+                image_files.extend(list(deep_analysis_dir.glob("*.png")))
+            
+            # Create a mapping from filename to actual image data
+            images = {}
+            for img_path in image_files:
+                try:
+                    with open(img_path, "rb") as img_file:
+                        # Create base64 encoded image data
+                        import base64
+                        encoded = base64.b64encode(img_file.read()).decode()
+                        # Store with just the filename as key
+                        images[img_path.name] = encoded
+                except Exception as e:
+                    print(f"Error loading image {img_path}: {e}")
+            
+            # Read markdown content
             with open(all_reports['markdown'], 'r') as f:
                 md_content = f.read()
-            st.markdown(md_content)
+            
+            # Replace image references in markdown with data URI images
+            import re
+            
+            # Pattern to find markdown image syntax: ![alt text](path/to/image.png)
+            img_pattern = r'!\[(.*?)\]\((.*?)\)'
+            
+            def replace_with_data_uri(match):
+                alt_text = match.group(1)
+                img_path = match.group(2)
+                
+                # Extract just the filename
+                img_filename = Path(img_path).name
+                
+                # Check if we have this image in our mapping
+                if img_filename in images:
+                    return f'![{alt_text}](data:image/png;base64,{images[img_filename]})'
+                else:
+                    # If image not found, return original reference
+                    return match.group(0)
+            
+            # Replace all image references with data URIs
+            md_content = re.sub(img_pattern, replace_with_data_uri, md_content)
+            
+            # Display modified markdown
+            st.markdown(md_content, unsafe_allow_html=True)
         else:
             st.warning("Markdown report was not generated.")
     
     with tab3:
         # Show visualization gallery with improved layout
         st.subheader("Visualization Gallery")
-        figures_dir = Path(report_path).parent / "figures"
-        if figures_dir.exists():
-            image_files = list(figures_dir.glob("*.png"))
-            if image_files:
-                # Add a full-width container for visualizations
-                full_width_container = st.container()
-                with full_width_container:
-                    # Create a more responsive grid system using st.columns
-                    num_columns = 3  # Default to 3 columns on larger screens
-                    
-                    # Group images into rows
-                    for i in range(0, len(image_files), num_columns):
-                        cols = st.columns(num_columns)
-                        for j in range(num_columns):
-                            if i + j < len(image_files):
-                                try:
-                                    img_path = image_files[i + j]
-                                    img_name = img_path.name
-                                    
-                                    # Open and check image size first before displaying
-                                    try:
-                                        with Image.open(img_path) as img:
-                                            # Check if image is unreasonably large
-                                            width, height = img.size
-                                            if width * height > 50000000:  # If image is very large
-                                                # Calculate new dimensions while preserving aspect ratio
-                                                ratio = width / height
-                                                if width > height:
-                                                    new_width = 2000  # Max width
-                                                    new_height = int(new_width / ratio)
-                                                else:
-                                                    new_height = 2000  # Max height
-                                                    new_width = int(new_height * ratio)
-                                                
-                                                # Resize image
-                                                resized_img = img.resize((new_width, new_height), Image.LANCZOS)
-                                                
-                                                # Save to temporary buffer
-                                                img_buffer = io.BytesIO()
-                                                resized_img.save(img_buffer, format="PNG")
-                                                img_buffer.seek(0)
-                                                
-                                                # Display the resized image
-                                                cols[j].image(img_buffer, caption=f"{img_name} (resized)", use_container_width=True)
-                                            else:
-                                                # Image is reasonable size, display normally
-                                                # Use container_width=True to ensure the image uses the full column width
-                                                cols[j].image(str(img_path), caption=img_name, use_container_width=True)
-                                    except PIL.Image.DecompressionBombError:
-                                        # If we still get the error, show a placeholder instead
-                                        cols[j].warning(f"Image too large to display: {img_name}")
-                                except Exception as e:
-                                    cols[j].error(f"Error displaying image {img_name}: {str(e)}")
-            else:
-                st.info("No visualizations were generated.")
+        
+        # First, collect all image files including those in subdirectories
+        figures_dir = Path(report_path).parent
+        all_image_files = []
+        
+        # Check main figures directory
+        main_figures_dir = figures_dir / "figures"
+        if main_figures_dir.exists():
+            all_image_files.extend(list(main_figures_dir.glob("*.png")))
+        
+        # Check for deep analysis figures
+        deep_analysis_dir = figures_dir / "deep_analysis"
+        if deep_analysis_dir.exists():
+            all_image_files.extend(list(deep_analysis_dir.glob("*.png")))
+        
+        # Check for any other PNG files directly in output dir
+        all_image_files.extend(list(figures_dir.glob("*.png")))
+        
+        # Sort images by modification time (newest first)
+        all_image_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        
+        if all_image_files:
+            # Create filter for image types
+            image_types = set()
+            for img_path in all_image_files:
+                # Extract image type from filename (e.g., "histogram", "scatter", etc.)
+                img_type = img_path.stem.split('_')[-1] if '_' in img_path.stem else "other"
+                image_types.add(img_type)
+            
+            
+            
+            filtered_images = all_image_files
+            
+            # Create a responsive grid system using st.columns
+            num_columns = 3  # Default to 3 columns on larger screens
+            
+            # Create a gallery of visualizations with captions
+            for i in range(0, len(filtered_images), num_columns):
+                cols = st.columns(num_columns)
+                
+                # Add images to columns
+                for j in range(num_columns):
+                    idx = i + j
+                    if idx < len(filtered_images):
+                        img_path = filtered_images[idx]
+                        try:
+                            # Get a descriptive caption from the filename
+                            caption = img_path.stem.replace('_', ' ').title()
+                            
+                            # Display the image with better styling
+                            with cols[j]:
+                                st.image(
+                                    str(img_path), 
+                                    caption=caption,
+                                    use_container_width=True
+                                )
+                                
+                        except Exception as e:
+                            cols[j].error(f"Error displaying image {img_path.name}: {str(e)}")
+            
+            
+        else:
+            st.info("No visualizations were generated.")
     
     with tab4:
         # Download options - Use full width columns for better layout
@@ -377,40 +459,20 @@ def _display_results(report_path, output_format, all_reports=None):
             html_b64 = base64.b64encode(html_content.encode()).decode()
             col2.markdown(f'<a href="data:text/html;base64,{html_b64}" download="eda_report.html" class="button" style="display:inline-block; padding:10px 15px; background-color:#2196F3; color:white; text-decoration:none; border-radius:4px; margin:10px 0; width:100%; text-align:center;">Download HTML Report</a>', unsafe_allow_html=True)
         
-        # Visualizations download - Use grid layout for better use of space
-        st.markdown("### Download Individual Visualizations")
-        figures_dir = Path(report_path).parent / "figures"
-        if figures_dir.exists():
-            image_files = list(figures_dir.glob("*.png"))
-            if image_files:
-                # Create a gallery of download links, 3 per row
-                for i in range(0, len(image_files), 6):
-                    cols = st.columns(6)
-                    for j in range(6):
-                        if i + j < len(image_files):
-                            try:
-                                img_path = image_files[i + j]
-                                img_name = img_path.name
-                                
-                                # Check if image is too large before preparing download
-                                try:
-                                    with Image.open(img_path) as img:
-                                        # Just check if we can open it - PIL will raise DecompressionBombError if too large
-                                        pass
-                                        
-                                    # If we get here, image is OK to provide for download
-                                    with open(img_path, "rb") as file:
-                                        img_bytes = file.read()
-                                        b64 = base64.b64encode(img_bytes).decode()
-                                        # Make buttons more consistent and full-width
-                                        href = f'<a href="data:image/png;base64,{b64}" download="{img_path.name}" style="display:block; margin:10px 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background-color:#f0f0f0; padding:8px 12px; border-radius:4px; text-align:center; color:#333; text-decoration:none; width:100%;">{img_path.name}</a>'
-                                        cols[j].markdown(href, unsafe_allow_html=True)
-                                        
-                                except PIL.Image.DecompressionBombError:
-                                    cols[j].warning(f"Image too large to download: {img_path.name}")
-                                    
-                            except Exception as e:
-                                cols[j].error(f"Error with {img_path.name}: {str(e)}")
+        # Add download all visualizations as zip
+        if all_image_files:
+            st.markdown("### Download All Visualizations")
+            
+            # Create a zip file of all visualizations
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for img_path in all_image_files:
+                    zip_file.write(img_path, arcname=img_path.name)
+            
+            zip_buffer.seek(0)
+            zip_b64 = base64.b64encode(zip_buffer.getvalue()).decode()
+            
+            st.markdown(f'<a href="data:application/zip;base64,{zip_b64}" download="visualizations.zip" class="button" style="display:inline-block; padding:10px 15px; background-color:#FF9800; color:white; text-decoration:none; border-radius:4px; margin:10px 0; width:100%; text-align:center;">Download All Visualizations (ZIP)</a>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()

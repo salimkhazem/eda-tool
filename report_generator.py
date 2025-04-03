@@ -68,9 +68,9 @@ class ReportGenerator:
             
             # Check if we have a visualization dashboard from the advanced visualization engine
             if "visualization_dashboard" in results:
-                dashboard_path = Path(results["visualization_dashboard"])
-                rel_path = dashboard_path.relative_to(self.output_dir)
-                f.write(f"An interactive visualization dashboard is available at: [{dashboard_path.name}]({rel_path})\n\n")
+                dashboard_path = Path(results["visualization_dashboard"]).name
+                # Use absolute path for dashboard in the markdown
+                f.write(f"An interactive visualization dashboard is available at: [{dashboard_path}]({dashboard_path})\n\n")
             
             # Include individual visualizations
             for viz in results['visualizations']:
@@ -79,9 +79,12 @@ class ReportGenerator:
                 f.write(f"**Columns**: {', '.join(viz['columns'])}\n\n")
                 f.write(f"**Description**: {viz['description']}\n\n")
                 
-                # Convert path to relative
-                rel_path = Path(viz['file_path']).relative_to(self.output_dir)
-                f.write(f"![{viz['title']}]({rel_path})\n\n")
+                # For images, only use the filename without any path prefixes
+                # This will work better with how we're processing images in Streamlit
+                file_path = Path(viz['file_path'])
+                img_filename = file_path.name
+                
+                f.write(f"![{viz['title']}]({img_filename})\n\n")
             
             # Data Quality
             f.write(f"## Data Quality Checks\n\n")
@@ -119,10 +122,11 @@ class ReportGenerator:
                     # Add the variables shown in the plot
                     f.write(f"**Variables included**: {', '.join(pairplot_data['variables'])}\n\n")
                     
-                    # Include the plot image
+                    # Include the plot image - use just the filename
                     if "plot_path" in pairplot_data:
-                        rel_path = Path(pairplot_data["plot_path"]).relative_to(self.output_dir)
-                        f.write(f"![Comprehensive Pairplot]({rel_path})\n\n")
+                        file_path = Path(pairplot_data["plot_path"])
+                        img_filename = file_path.name
+                        f.write(f"![Comprehensive Pairplot]({img_filename})\n\n")
                         
                     f.write("The diagonal shows the distribution of each variable, while the off-diagonal cells show the relationship between pairs of variables.\n\n")
                 
@@ -155,11 +159,11 @@ class ReportGenerator:
                                 f.write(f"- P-value: {p_value}\n")
                                 f.write(f"- Distribution is {'normal' if is_normal else 'not normal'}\n\n")
                         
-                        # Include QQ plot if available
+                        # Include QQ plot if available - use just the filename
                         if "qq_plot_path" in dist_data and dist_data["qq_plot_path"]:
-                            rel_path = Path(dist_data["qq_plot_path"]).relative_to(self.output_dir)
+                            img_filename = Path(dist_data["qq_plot_path"]).name
                             f.write(f"**QQ Plot**:\n\n")
-                            f.write(f"![QQ Plot - {col}]({rel_path})\n\n")
+                            f.write(f"![QQ Plot - {col}]({img_filename})\n\n")
                         
                         # Include best distribution fit
                         if "best_fitting_distribution" in dist_data and dist_data["best_fitting_distribution"]:
@@ -176,15 +180,17 @@ class ReportGenerator:
                     
                     # Include elbow plot if available
                     if "elbow_plot_path" in cluster_data:
-                        rel_path = Path(cluster_data["elbow_plot_path"]).relative_to(self.output_dir)
+                        file_path = Path(cluster_data["elbow_plot_path"])
+                        img_filename = file_path.name
                         f.write(f"**Elbow Method Plot**:\n\n")
-                        f.write(f"![Elbow Method]({rel_path})\n\n")
+                        f.write(f"![Elbow Method]({img_filename})\n\n")
                     
                     # Include cluster plot if available
                     if "cluster_plot_path" in cluster_data:
-                        rel_path = Path(cluster_data["cluster_plot_path"]).relative_to(self.output_dir)
+                        file_path = Path(cluster_data["cluster_plot_path"])
+                        img_filename = file_path.name
                         f.write(f"**Cluster Visualization**:\n\n")
-                        f.write(f"![Cluster Visualization]({rel_path})\n\n")
+                        f.write(f"![Cluster Visualization]({img_filename})\n\n")
                     
                     # Include cluster sizes
                     if "cluster_sizes" in cluster_data:
@@ -232,9 +238,10 @@ class ReportGenerator:
                         
                         # Include boxplot if available
                         if "boxplot_path" in methods:
-                            rel_path = Path(methods["boxplot_path"]).relative_to(self.output_dir)
+                            file_path = Path(methods["boxplot_path"])
+                            img_filename = file_path.name
                             f.write(f"**Boxplot with Outliers**:\n\n")
-                            f.write(f"![Boxplot - {col}]({rel_path})\n\n")
+                            f.write(f"![Boxplot - {col}]({img_filename})\n\n")
                 
                 # Time Series Analysis
                 if "time_series_analysis" in results["deep_analysis"] and results["deep_analysis"]["time_series_analysis"]:
@@ -249,9 +256,10 @@ class ReportGenerator:
                             
                             # Include time series plot if available
                             if "time_series_plot" in analysis:
-                                rel_path = Path(analysis["time_series_plot"]).relative_to(self.output_dir)
+                                file_path = Path(analysis["time_series_plot"])
+                                img_filename = file_path.name
                                 f.write(f"**Time Series Plot**:\n\n")
-                                f.write(f"![Time Series - {col}]({rel_path})\n\n")
+                                f.write(f"![Time Series - {col}]({img_filename})\n\n")
                             
                             # Stationarity test results
                             if "stationarity_test" in analysis:
@@ -267,9 +275,10 @@ class ReportGenerator:
                             
                             # Seasonal decomposition plot
                             if "seasonal_decomposition" in analysis and "plot_path" in analysis["seasonal_decomposition"]:
-                                rel_path = Path(analysis["seasonal_decomposition"]["plot_path"]).relative_to(self.output_dir)
+                                file_path = Path(analysis["seasonal_decomposition"]["plot_path"])
+                                img_filename = file_path.name
                                 f.write(f"**Seasonal Decomposition**:\n\n")
-                                f.write(f"![Decomposition - {col}]({rel_path})\n\n")
+                                f.write(f"![Decomposition - {col}]({img_filename})\n\n")
                 
                 # Feature Importance
                 if "feature_importance" in results["deep_analysis"] and results["deep_analysis"]["feature_importance"]:
@@ -285,9 +294,10 @@ class ReportGenerator:
                         
                         # Include feature importance plot if available
                         if "plot_path" in analysis:
-                            rel_path = Path(analysis["plot_path"]).relative_to(self.output_dir)
+                            file_path = Path(analysis["plot_path"])
+                            img_filename = file_path.name
                             f.write(f"**Feature Importance Plot**:\n\n")
-                            f.write(f"![Feature Importance - {target}]({rel_path})\n\n")
+                            f.write(f"![Feature Importance - {target}]({img_filename})\n\n")
                         
                         # Cross-validation results
                         if "cv_rmse" in analysis:
@@ -316,9 +326,10 @@ class ReportGenerator:
                         
                         # Include network visualization
                         if "plot_path" in network_data:
-                            rel_path = Path(network_data["plot_path"]).relative_to(self.output_dir)
+                            file_path = Path(network_data["plot_path"])
+                            img_filename = file_path.name
                             f.write(f"**Correlation Network Visualization**:\n\n")
-                            f.write(f"![Correlation Network]({rel_path})\n\n")
+                            f.write(f"![Correlation Network]({img_filename})\n\n")
                         
                         # Include top correlations
                         if "correlations" in network_data and network_data["correlations"]:
@@ -365,12 +376,20 @@ class ReportGenerator:
                                 continue
                             
                             statistic = test_data.get("f_statistic" if test_type == "anova" else "t_statistic", "N/A")
+                            if isinstance(statistic, (int, float)):
+                                f.write(f"- Statistic: {statistic:.4f}\n")
+                            else:
+                                f.write(f"- Statistic: {statistic}\n")
+                            
                             p_value = test_data.get("p_value", "N/A")
+                            if isinstance(p_value, (int, float)):
+                                f.write(f"- P-value: {p_value:.4f}\n")
+                            else:
+                                f.write(f"- P-value: {p_value}\n")
+                            
                             significant = "Yes" if test_data.get("significant", False) else "No"
                             interpretation = test_data.get("interpretation", "")
                             
-                            f.write(f"- Statistic: {statistic:.4f}\n")
-                            f.write(f"- P-value: {p_value:.4f}\n")
                             f.write(f"- Significant: {significant}\n")
                             f.write(f"- Interpretation: {interpretation}\n\n")
             

@@ -48,20 +48,26 @@ class EDAExecutor:
             try:
                 from visualization_engine import VisualizationEngine
                 viz_engine = VisualizationEngine(self.config)
-                viz_results = viz_engine.create_all_visualizations(df, eda_plan)
+                
+                # Automatically generate additional visualizations by enhancing the plan
+                enhanced_plan = self._enhance_visualization_plan(df, eda_plan)
+                
+                viz_results = viz_engine.create_all_visualizations(df, enhanced_plan)
                 self.results["visualizations"] = viz_results
                 
                 # Create visualization dashboard
                 dashboard_path = viz_engine.get_visualization_dashboard()
                 self.results["visualization_dashboard"] = dashboard_path
                 
+                print(f"   ✓ Created {len(viz_results)} visualizations")
                 print(f"   ✓ Created visualizations dashboard at: {dashboard_path}")
             except ImportError:
                 print("   ⚠️ Visualization engine not available, using basic visualizations")
                 self._create_visualizations(df, eda_plan.get("visualizations", []))
         else:
             # Use traditional visualization approach for basic/intermediate depths
-            self._create_visualizations(df, eda_plan.get("visualizations", []))
+            enhanced_plan = self._enhance_visualization_plan(df, eda_plan) if self.config.eda_depth == 'intermediate' else eda_plan
+            self._create_visualizations(df, enhanced_plan.get("visualizations", []))
         
         # Perform data quality checks
         self._check_data_quality(df, eda_plan.get("data_quality_checks", []))
@@ -331,3 +337,196 @@ class EDAExecutor:
                 "columns_used": columns_used,
                 "example": "See report for implementation details"
             }
+    
+    def _enhance_visualization_plan(self, df, eda_plan):
+        """
+        Enhance the visualization plan to include more automatically generated visualizations
+        
+        Args:
+            df: Pandas DataFrame
+            eda_plan: Original EDA plan
+            
+        Returns:
+            dict: Enhanced EDA plan
+        """
+        # Create a deep copy of the original plan
+        import copy
+        enhanced_plan = copy.deepcopy(eda_plan)
+        original_viz_count = len(enhanced_plan.get("visualizations", []))
+        
+        # Get all numeric and categorical columns
+        numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
+        categorical_columns = df.select_dtypes(exclude=['number', 'datetime']).columns.tolist()
+        datetime_columns = df.select_dtypes(include=['datetime']).columns.tolist()
+        
+        # If plan doesn't have visualizations, create an empty list
+        if "visualizations" not in enhanced_plan:
+            enhanced_plan["visualizations"] = []
+        
+        existing_viz_types = {}
+        # Track which visualizations already exist to avoid duplicates
+        for viz in enhanced_plan["visualizations"]:
+            viz_type = viz.get("type", "").lower()
+            viz_columns = tuple(sorted(viz.get("columns", [])))
+            key = f"{viz_type}_{viz_columns}"
+            existing_viz_types[key] = True
+        
+        # Add distribution plots for each numeric column
+        for col in numeric_columns[:10]:  # Limit to first 10 numeric columns
+            key = f"histogram_{(col,)}"
+            if key not in existing_viz_types:
+                enhanced_plan["visualizations"].append({
+                    "title": f"Distribution of {col}",
+                    "type": "histogram",
+                    "columns": [col],
+                    "description": f"Histogram showing the distribution of {col}"
+                })
+        
+        # Add box plots for each numeric column
+        for col in numeric_columns[:10]:  # Limit to first 10 numeric columns
+            key = f"box_{(col,)}"
+            if key not in existing_viz_types:
+                enhanced_plan["visualizations"].append({
+                    "title": f"Box Plot of {col}",
+                    "type": "box",
+                    "columns": [col],
+                    "description": f"Box plot showing the distribution and outliers of {col}"
+                })
+        
+        # Add count plots for each categorical column
+        for col in categorical_columns[:10]:  # Limit to first 10 categorical columns
+            key = f"bar_{(col,)}"
+            if key not in existing_viz_types:
+                enhanced_plan["visualizations"].append({
+                    "title": f"Count of {col}",
+                    "type": "bar",
+                    "columns": [col],
+                    "description": f"Bar chart showing the frequency of each category in {col}"
+                })
+        
+        # Add some scatter plots between numeric columns
+        if len(numeric_columns) >= 2:
+            for i in range(min(5, len(numeric_columns))):
+                for j in range(i+1, min(5, len(numeric_columns))):
+                    col1 = numeric_columns[i]
+                    col2 = numeric_columns[j]
+                    key = f"scatter_{tuple(sorted([col1, col2]))}"
+                    if key not in existing_viz_types:
+                        enhanced_plan["visualizations"].append({
+                            "title": f"Scatter Plot of {col1} vs {col2}",
+                            "type": "scatter",
+                            "columns": [col1, col2],
+                            "description": f"Scatter plot showing the relationship between {col1} and {col2}"
+                        })
+        
+        # Add time series plots if there are datetime columns
+        if datetime_columns and numeric_columns:
+            for dt_col in datetime_columns[:2]:  # Limit to first 2 datetime columns
+                for num_col in numeric_columns[:3]:  # Limit to first 3 numeric columns
+                    key = f"line_{tuple(sorted([dt_col, num_col]))}"
+                    if key not in existing_viz_types:
+                        enhanced_plan["visualizations"].append({
+                            "title": f"{num_col} over {dt_col}",
+                            "type": "line",
+                            "columns": [dt_col, num_col],
+                            "description": f"Line chart showing how {num_col} changes over {dt_col}"
+                        })
+        
+        # Add box plots of numeric columns by categorical columns
+        if numeric_columns and categorical_columns:
+            for num_col in numeric_columns[:3]:  # Limit to first 3 numeric columns
+                for cat_col in categorical_columns[:3]:  # Limit to first 3 categorical columns
+                    # Only add if the categorical column doesn't have too many values
+                    if df[cat_col].nunique() <= 10:
+                        key = f"boxplot_{tuple(sorted([num_col, cat_col]))}"
+                        if key not in existing_viz_types:
+                            enhanced_plan["visualizations"].append({
+                                "title": f"{num_col} by {cat_col}",
+                                "type": "boxplot",
+                                "columns": [cat_col, num_col],  # Categorical first, then numeric
+                                "description": f"Box plot showing distribution of {num_col} for each category in {cat_col}"
+                            })
+        
+        # Add correlation heatmap for all numeric columns
+        if len(numeric_columns) > 3:
+            key = f"heatmap_{tuple(sorted(numeric_columns))}"
+            if key not in existing_viz_types:
+                enhanced_plan["visualizations"].append({
+                    "title": "Correlation Heatmap",
+                    "type": "heatmap",
+                    "columns": numeric_columns,
+                    "description": "Heatmap showing the correlation between numeric variables"
+                })
+        
+        # Add pairplot for a subset of numeric columns
+        if len(numeric_columns) >= 3:
+            # If we have categorical columns, include one for coloring
+            if categorical_columns and df[categorical_columns[0]].nunique() <= 5:
+                paired_cols = numeric_columns[:4] + [categorical_columns[0]]
+                key = f"pairplot_{tuple(sorted(paired_cols))}"
+                if key not in existing_viz_types:
+                    enhanced_plan["visualizations"].append({
+                        "title": "Pair Plot with Categories",
+                        "type": "pairplot",
+                        "columns": paired_cols,
+                        "description": "Pair plot showing relationships between numeric variables with categorical coloring"
+                    })
+            else:
+                paired_cols = numeric_columns[:4]  # Limit to 4 columns for readability
+                key = f"pairplot_{tuple(sorted(paired_cols))}"
+                if key not in existing_viz_types:
+                    enhanced_plan["visualizations"].append({
+                        "title": "Pair Plot",
+                        "type": "pairplot",
+                        "columns": paired_cols,
+                        "description": "Pair plot showing relationships between numeric variables"
+                    })
+        
+        # For deep analysis, add specialized visualizations
+        if self.config.eda_depth == 'deep':
+            # Add violin plots for numeric columns by categorical
+            if numeric_columns and categorical_columns:
+                for num_col in numeric_columns[:2]:  # Limit to first 2 numeric columns
+                    for cat_col in categorical_columns[:2]:  # Limit to first 2 categorical columns
+                        if df[cat_col].nunique() <= 8:  # Only for smaller number of categories
+                            key = f"violin_{tuple(sorted([num_col, cat_col]))}"
+                            if key not in existing_viz_types:
+                                enhanced_plan["visualizations"].append({
+                                    "title": f"Violin Plot of {num_col} by {cat_col}",
+                                    "type": "violin",
+                                    "columns": [cat_col, num_col],
+                                    "description": f"Violin plot showing distribution of {num_col} for each category in {cat_col}"
+                                })
+            
+            # Add interactive plots
+            if len(numeric_columns) >= 3:
+                # 3D scatter plot
+                key = f"3d_scatter_{tuple(sorted(numeric_columns[:3]))}"
+                if key not in existing_viz_types:
+                    enhanced_plan["visualizations"].append({
+                        "title": f"3D Scatter Plot",
+                        "type": "scatter3d",
+                        "columns": numeric_columns[:3],
+                        "description": "3D scatter plot showing relationships between three numeric variables",
+                        "interactive": True
+                    })
+            
+            # Add parallel coordinates plot
+            if len(numeric_columns) >= 4:
+                columns_to_use = numeric_columns[:6]  # Use up to 6 columns
+                if categorical_columns:
+                    columns_to_use.append(categorical_columns[0])  # Add a categorical column for color
+                
+                key = f"parallel_coordinates_{tuple(sorted(columns_to_use))}"
+                if key not in existing_viz_types:
+                    enhanced_plan["visualizations"].append({
+                        "title": "Parallel Coordinates Plot",
+                        "type": "parallel_coordinates",
+                        "columns": columns_to_use,
+                        "description": "Parallel coordinates plot showing relationships between multiple variables",
+                        "interactive": True
+                    })
+        
+        added_viz_count = len(enhanced_plan["visualizations"]) - original_viz_count
+        print(f"   ✓ Added {added_viz_count} more visualizations to the plan")
+        return enhanced_plan
