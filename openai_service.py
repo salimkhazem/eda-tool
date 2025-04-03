@@ -1,4 +1,8 @@
 import json
+import os
+from datetime import datetime
+import pandas as pd
+import numpy as np
 from openai import AzureOpenAI
 
 class OpenAIService:
@@ -22,6 +26,22 @@ class OpenAIService:
         Returns:
             str: Prompt for GPT model
         """
+        # Create a custom JSON encoder to handle Pandas Timestamp objects
+        class CustomJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, (pd.Timestamp, datetime)):
+                    return obj.isoformat()
+                elif isinstance(obj, np.integer):
+                    return int(obj)
+                elif isinstance(obj, np.floating):
+                    return float(obj)
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                return super().default(obj)
+        
+        # Format sample data for the prompt
+        sample_data_str = json.dumps(metadata['sample_data'], indent=2, cls=CustomJSONEncoder)
+        
         prompt = f"""
 You are a data science expert specialized in Exploratory Data Analysis (EDA).
 I have a dataset with {metadata['num_rows']} rows and {metadata['num_columns']} columns.
@@ -30,7 +50,7 @@ The column names and data types are:
 {json.dumps({c: t for c, t in metadata['column_dtypes'].items()}, indent=2)}
 
 Here are the first {len(metadata['sample_data'])} rows of the dataset:
-{json.dumps(metadata['sample_data'], indent=2)}
+{sample_data_str}
 
 Missing values per column:
 {json.dumps(metadata['missing_values'], indent=2)}
