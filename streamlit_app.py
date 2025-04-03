@@ -8,14 +8,11 @@ import streamlit as st
 import pandas as pd
 import PIL
 from pathlib import Path
-
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Increase PIL's maximum image size limit
 # This should be done carefully as very large images can consume a lot of memory
-PIL.Image.MAX_IMAGE_PIXELS = 4000000000  # Increase the limit
 
 from main import run_eda
 from config import Config 
